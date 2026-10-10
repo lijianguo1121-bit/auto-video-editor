@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>auto-video-editor · 动效层</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:720px;height:1280px;background:transparent;overflow:hidden}
+  #stage{
+    position:absolute;left:0;top:0;width:720px;height:1280px;overflow:hidden;
+    --a:#8DE0C2; --b:#F5F2E9; --c:#FF9B79; --bg:#0B1116;
+    --shadow:0 6px 22px rgba(4,10,14,.70);
+    font-family:"PingFang SC","Hiragino Sans GB","Heiti SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* 上下压暗衬：真身只是半透明，不吃画面，但让白字在任何底色上都读得清 */
+  .scrim{position:absolute;inset:0;pointer-events:none;
+    background:linear-gradient(180deg,rgba(4,10,14,.55) 0,rgba(4,10,14,.05) 18%,rgba(4,10,14,0) 34%,
+                                      rgba(4,10,14,.06) 52%,rgba(4,10,14,.66) 74%,rgba(4,10,14,.88) 100%)}
+  .hud{position:absolute;inset:0;pointer-events:none}
+  .pill{position:absolute;left:50%;top:78px;transform:translateX(-50%);height:56px;padding:0 26px;
+    display:flex;align-items:center;gap:12px;border-radius:28px;opacity:0;
+    background:linear-gradient(180deg,rgba(11,17,22,.82),rgba(11,17,22,.64));
+    border:1px solid color-mix(in srgb,var(--a) 46%,transparent);
+    box-shadow:0 10px 28px rgba(0,0,0,.38),inset 0 1px 0 rgba(255,255,255,.09)}
+  .pill .dot{width:10px;height:10px;border-radius:50%;background:var(--a)}
+  .pill .txt{font-size:22px;font-weight:700;letter-spacing:2.2px;color:var(--b);white-space:nowrap}
+  .pbar{position:absolute;left:96px;right:96px;bottom:50px;height:6px;border-radius:3px;
+    background:rgba(245,242,233,.18);opacity:0}
+  .pbar i{position:absolute;left:0;top:0;height:6px;width:0;border-radius:3px;
+    background:linear-gradient(90deg,color-mix(in srgb,var(--a) 55%,transparent),var(--a))}
+  .pbar b{position:absolute;top:-30px;right:0;font-size:19px;font-weight:650;letter-spacing:2px;
+    color:rgba(245,242,233,.78);font-variant-numeric:tabular-nums}
+
+  /* ── 每拍卡片（所有皮肤共用骨架，字号由 band 高度算出来） ── */
+  .card{position:absolute;left:68px;right:68px;opacity:0;will-change:transform,opacity}
+  .card .tag{display:inline-block;font-weight:700;letter-spacing:2.4px;opacity:.94}
+  .card .ttl{font-weight:850;line-height:1.14;letter-spacing:.2px;text-shadow:var(--shadow)}
+  .card .ttl div{white-space:nowrap}
+  .card .sub{margin-top:10px;font-weight:600;letter-spacing:1.2px;opacity:.82;
+    color:var(--b);text-shadow:var(--shadow);line-height:1.28}
+
+  /* 01 · 航线落地 */
+  .style-route .card .tag{color:var(--a)}
+  .style-route .card .ttl{color:var(--b)}
+  .style-route .route{position:absolute;left:0;top:0;width:720px;height:1280px;overflow:visible}
+  .style-route .route .track{fill:none;stroke:rgba(245,242,233,.15);stroke-width:2;stroke-dasharray:5 9}
+  .style-route .route .line{fill:none;stroke:var(--a);stroke-width:4;stroke-linecap:round;
+    filter:drop-shadow(0 0 9px color-mix(in srgb,var(--a) 55%,transparent))}
+  .style-route .node{position:absolute;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;opacity:0}
+  .style-route .node .ring{position:absolute;inset:0;border-radius:50%;border:2px solid var(--a);
+    box-shadow:0 0 12px color-mix(in srgb,var(--a) 45%,transparent)}
+  .style-route .node .core{position:absolute;left:50%;top:50%;width:8px;height:8px;margin:-4px 0 0 -4px;
+    border-radius:50%;background:var(--b)}
+  .style-route .ripple{position:absolute;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;
+    border:2px solid var(--a);opacity:0}
+  .style-route .nlab{position:absolute;transform:translate(-50%,0);font-size:19px;font-weight:800;
+    letter-spacing:1.2px;color:#F5F2E9;opacity:0;text-shadow:0 3px 12px rgba(0,0,0,.85);white-space:nowrap}
+
+  /* 02 · 冲击大字 */
+  .style-impact .card .tag{color:#FFE12F;letter-spacing:3.2px}
+  .style-impact .card .ttl{color:#fff;letter-spacing:-1px;
+    text-shadow:4px 5px 0 color-mix(in srgb,var(--c) 88%,transparent),0 8px 28px rgba(0,0,0,.6)}
+  .style-impact .slab{position:absolute;left:-40px;right:-40px;height:18px;transform-origin:left center;
+    background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 30%,transparent));opacity:0}
+  .style-impact .burst{position:absolute;border-radius:50%;opacity:0;
+    background:repeating-conic-gradient(color-mix(in srgb,var(--c) 70%,transparent) 0 4deg,transparent 4deg 13deg);
+    -webkit-mask-image:radial-gradient(circle,#000 24%,transparent 66%);
+    mask-image:radial-gradient(circle,#000 24%,transparent 66%)}
+
+  /* 03 · 极简章节 */
+  .style-editorial .card .tag{color:#B9B2A4;font-family:ui-monospace,Menlo,monospace}
+  .style-editorial .card .ttl{color:var(--b);font-weight:700}
+  .style-editorial .rule{position:absolute;height:2px;background:linear-gradient(90deg,var(--b),transparent);
+    transform-origin:left center;opacity:0}
+  .style-editorial .idx{position:absolute;right:68px;font-family:ui-monospace,Menlo,monospace;
+    font-weight:800;color:rgba(245,242,233,.12);opacity:0;line-height:1}
+  .style-editorial .tick{position:absolute;left:68px;width:120px;height:2px;background:rgba(245,242,233,.20);opacity:0}
+
+  /* 04 · 数据仪表盘 */
+  .style-dashboard .card{right:300px}
+  .style-dashboard .card .tag{color:var(--a);font-family:ui-monospace,Menlo,monospace}
+  .style-dashboard .card .ttl{color:var(--b)}
+  .style-dashboard .grid{position:absolute;inset:0;opacity:0;
+    background-image:linear-gradient(rgba(141,224,194,.09) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(141,224,194,.09) 1px,transparent 1px);
+    background-size:90px 90px}
+  .style-dashboard .metric{position:absolute;left:452px;right:68px;text-align:right;opacity:0}
+  .style-dashboard .metric .v{font-weight:850;color:var(--a);line-height:1;
+    font-variant-numeric:tabular-nums;text-shadow:0 4px 18px rgba(0,0,0,.6)}
+  .style-dashboard .metric .k{margin-top:9px;font-size:16px;letter-spacing:1.4px;color:rgba(245,242,233,.66)}
+  .style-dashboard .bars{position:absolute;left:68px;right:68px;display:flex;align-items:flex-end;gap:12px}
+  .style-dashboard .bars i{flex:1;height:0;border-radius:4px 4px 0 0;
+    background:linear-gradient(180deg,var(--a),color-mix(in srgb,var(--a) 22%,transparent))}
+  /* 05 · 杂志编辑 */
+  .style-magazine .card .tag{color:#EF695B;font-family:Georgia,"Songti SC",serif;letter-spacing:3px}
+  .style-magazine .card .ttl,.style-magazine .card .sub{font-family:Georgia,"Songti SC","STSong",serif}
+  .style-magazine .card .ttl{color:var(--b);letter-spacing:.4px}
+  .style-magazine .frame{position:absolute;border:1px solid rgba(255,249,239,.5);opacity:0}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="scrim"></div>
+  <div class="fx" id="fx"></div>
+  <div class="hud">
+    <div class="pill" id="pill"><span class="dot"></span><span class="txt" id="pillTxt"></span></div>
+    <div class="pbar" id="pbar"><b id="pbarPct">0%</b><i id="pbarFill"></i></div>
+  </div>
+  <div class="card" id="card">
+    <div class="tag" id="cTag"></div>
+    <div class="ttl" id="cTtl"></div>
+    <div class="sub" id="cSub"></div>
+  </div>
+</div>
+<script>
+/* =========================================================================
+   auto-video-editor · 逐帧动效层
+   - render(t) 只由 t 决定（不读上一帧），可 Playwright 逐帧抓取
+   - 上游通过 add_init_script 注入 window.__AVE
+   - 加一套动效：写 TPL['id'] = { build, draw }，再到 motion.py 的 LIBRARY 补元数据
+   ========================================================================= */
+const P = new URLSearchParams(location.search);
+
+const CFG = Object.assign({
+  style: 'route', fps: 30, duration: 30,
+  brand: { name: '', tagline: '' },
+  palette: { a:'#8DE0C2', b:'#F5F2E9', c:'#FF9B79', bg:'#0B1116' },
+  face: { detected: false, guard_px: null },
+  hud: { pill: true, progress: true },
+  beats: [], copy: {}, route: {}, motion: { enter: 0.30, out: 0.16 }
+}, (window.__AVE || {}));
+
+/* ── 缓动 / 弹簧 ─────────────────────────────────────────── */
+const c01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const lin = (t,a,b) => c01((t - a) / (b - a));
+const easeOut = p => 1 - Math.pow(1 - c01(p), 3);
+const easeIn  = p => Math.pow(c01(p), 3);
+const easeIO  = p => { p = c01(p); return p < .5 ? 4*p*p*p : 1 - Math.pow(-2*p+2,3)/2; };
+function spring(p, zeta=0.58, freq=3.1){
+  p = c01(p);
+  if (p <= 0) return 0;
+  if (zeta < 1){
+    const w = 2*Math.PI*freq, wd = w*Math.sqrt(1 - zeta*zeta), a = zeta*w;
+    return 1 - Math.exp(-a*p) * (Math.cos(wd*p) + (a/wd)*Math.sin(wd*p));
+  }
+  const w = 2*Math.PI*freq*(zeta - Math.sqrt(zeta*zeta - 1));
+  return 1 - Math.exp(-w*p) * (1 + w*p);
+}
+function seeded(seed){ let s = (seed*2654435761) >>> 0; return () => (s = (s*1664525 + 1013904223) >>> 0) / 4294967296; }
+
+/* ── 版面：先给人脸让路，再排版 ─────────────────────────────
+   人脸禁区只在"不压脸"约束里用；卡片永远落在禁区**之外**更宽的那一侧。 */
+const W = 720, H = 1280;
+const PILL_TOP = 78, PILL_H = 56, PROG_BOTTOM = 50, PROG_H = 6;
+function computeLayout(){
+  const topLimit = PILL_TOP + PILL_H + 26;
+  const botLimit = H - PROG_BOTTOM - PROG_H - 44;
+  const g = CFG.face && CFG.face.guard_px;
+  if (!g || !g[3]) return { zone:'bottom', top: Math.round(H*0.34), bot: botLimit };
+  const gTop = g[1];
+  const gBot = g[1] + g[3] + 10;
+  const above = { zone:'top',    top: topLimit, bot: Math.max(topLimit + 150, gTop - 22) };
+  const below = { zone:'bottom', top: Math.min(botLimit - 150, gBot + 22), bot: botLimit };
+  const hA = above.bot - above.top, hB = below.bot - below.top;
+  const pick = hA >= hB ? above : below;
+  pick.h = Math.max(120, pick.bot - pick.top);
+  return pick;
+}
+const BAND = computeLayout();
+BAND.h = BAND.bot - BAND.top;
+
+/* ── 节拍 ───────────────────────────────────────────────── */
+const BEATS = (CFG.beats && CFG.beats.length) ? CFG.beats
+  : [{ i:0, t0:0, t1:CFG.duration, tag:'正文', title:'口播正文', sub:'' }];
+function beatIndexAt(t){
+  for (let i = BEATS.length - 1; i >= 0; i--) if (t >= BEATS[i].t0) return i;
+  return 0;
+}
+
+/* ── DOM ────────────────────────────────────────────────── */
+const stage = document.getElementById('stage');
+const fx = document.getElementById('fx');
+const card = document.getElementById('card');
+const elTag = document.getElementById('cTag');
+const elTtl = document.getElementById('cTtl');
+const elSub = document.getElementById('cSub');
+const pill = document.getElementById('pill');
+const pillTxt = document.getElementById('pillTxt');
+const pbar = document.getElementById('pbar');
+const pbarFill = document.getElementById('pbarFill');
+const pbarPct = document.getElementById('pbarPct');
+
+function applySkin(){
+  const p = CFG.palette || {}, r = stage.style;
+  r.setProperty('--a', p.a || '#8DE0C2');
+  r.setProperty('--b', p.b || '#F5F2E9');
+  r.setProperty('--c', p.c || '#FF9B79');
+  r.setProperty('--bg', p.bg || '#0B1116');
+  const st = P.get('style') || CFG.style;
+  stage.className = 'style-' + st;
+}
+
+/* ── 标题自动适配：按"语义块"折行 + 逐档缩字号 ──
+   中文逐字折行会把"客服销售"拆成"客服销/售"，所以先把文字切成块：
+   数字+单位、英文串、标点、汉字（2 字一组），再按块装行。 */
+function tokenize(text){
+  const s = [...(text || '')];
+  const blocks = [];
+  const UNIT = /[万亿%倍座个家台条次天年元人份款项步期时小分秒]/;
+  let i = 0;
+  while (i < s.length){
+    const ch = s[i];
+    if (/\s/.test(ch)){ i++; continue; }
+    if (/[0-9]/.test(ch)){
+      let j = i; while (j < s.length && /[0-9.,]/.test(s[j])) j++;
+      if (j < s.length && UNIT.test(s[j])) j++;
+      blocks.push(s.slice(i, j).join('')); i = j; continue;
+    }
+    if (/[A-Za-z]/.test(ch)){
+      let j = i; while (j < s.length && /[A-Za-z0-9]/.test(s[j])) j++;
+      blocks.push(s.slice(i, j).join('')); i = j; continue;
+    }
+    if (/[，。！？、；：,.!?;:·—\-~～]/.test(ch)){ blocks.push(ch); i++; continue; }
+    blocks.push(s.slice(i, i + 2).join('')); i += 2;
+  }
+  return blocks;
+}
+function wrapBlocks(blocks, probe, maxW){
+  const rows = [];
+  let cur = '';
+  for (const b of blocks){
+    const test = cur + b;
+    probe.textContent = test;
+    if (probe.getBoundingClientRect().width > maxW && cur){
+      rows.push(cur); cur = b;
+    } else cur = test;
+  }
+  if (cur) rows.push(cur);
+  return rows;
+}
+function fitTitle(text, maxLines, base, min){
+  elTtl.innerHTML = '';
+  const blocks = tokenize(text);
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-weight:850;letter-spacing:.2px';
+  stage.appendChild(probe);
+  const maxW = card.clientWidth || (W - 136);
+  let size = base, rows = [];
+  for (; size >= min; size -= 2){
+    probe.style.fontSize = size + 'px';
+    rows = wrapBlocks(blocks, probe, maxW);
+    if (rows.length <= maxLines) break;
+  }
+  if (!rows.length || rows.length > maxLines){
+    probe.style.fontSize = min + 'px';
+    rows = wrapBlocks(blocks, probe, maxW);
+  }
+  probe.remove();
+  elTtl.style.fontSize = size + 'px';
+  for (const row of rows){ const d = document.createElement('div'); d.textContent = row; elTtl.appendChild(d); }
+  return size;
+}
+
+function setCard(b, opts){
+  const o = opts || {};
+  const c = b;
+  elTag.textContent = c.tag || '';
+  elTag.style.fontSize = Math.round(Math.max(15, Math.min(21, BAND.h * 0.062))) + 'px';
+  const base = Math.round(Math.max(26, Math.min(o.maxSize || 60, BAND.h * (o.ratio || 0.22))));
+  fitTitle(c.title || '', o.maxLines || 2, base, Math.max(20, Math.round(base * 0.55)));
+  const showSub = c.sub && BAND.h > 300 && (o.sub !== false);
+  elSub.style.display = showSub ? '' : 'none';
+  if (showSub){
+    const subSize = Math.round(Math.max(16, Math.min(26, BAND.h * 0.072)));
+    elSub.style.fontSize = subSize + 'px';
+    elSub.textContent = c.sub;
+  }
+}
+
+/* ── 进场/出场包络 ──────────────────────────────────────── */
+function envelope(b, t){
+  const span = Math.max(0.6, b.t1 - b.t0);
+  const p = c01((t - b.t0) / span);
+  const enter = spring(c01(p / Math.max(.06, CFG.motion.enter)));
+  const out = c01((p - (1 - CFG.motion.out)) / Math.max(.04, CFG.motion.out));
+  return { p, enter, exit: easeIn(out), vis: 1 - easeIn(out),
+           alpha: c01(enter * 2.2) * (1 - easeIn(out)) };
+}
+/** 把卡片竖着摆在 band 里：offset 是从 band 顶部往下偏多少（占 band 高比例） */
+function place(alpha, dy, frac){
+  const f = frac == null ? 0.34 : frac;
+  card.style.top = (BAND.top + BAND.h * f) + 'px';
+  card.style.opacity = alpha.toFixed(4);
+  card.style.transform = 'translateY(' + (dy || 0).toFixed(2) + 'px)';
+}
+
+/* ── 皮肤 ───────────────────────────────────────────────── */
+const TPL = {};
+
+/* 01 · 航线落地：一条航线贯穿全片，每拍点亮一个节点 */
+TPL.route = {
+  build(){
+    const nodes = ((CFG.route && CFG.route.nodes) || []).filter(Boolean);
+    const y0 = BAND.top + BAND.h * 0.52;        // 路径左端（低）
+    const y1 = BAND.top + BAND.h * 0.10;        // 路径右端（高）
+    const d = `M120,${y0.toFixed(0)} C250,${(y0-4).toFixed(0)} 470,${(y1+14).toFixed(0)} 600,${y1.toFixed(0)}`;
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'route'); svg.setAttribute('viewBox', '0 0 720 1280');
+    svg.innerHTML = `<path class="track" d="${d}"></path><path class="line" d="${d}"></path>`;
+    fx.appendChild(svg);
+    this.svg = svg; this.path = svg.querySelector('.line');
+    this.len = this.path.getTotalLength();
+    this.nodes = []; this.rips = []; this.labs = [];
+    const total = Math.min(nodes.length || BEATS.length, 6);
+    const showLabels = nodes.length > 0;
+    this.showLabels = showLabels;
+    for (let i = 0; i < total; i++){
+      const at = total === 1 ? 0.5 : 0.015 + (0.97 * i) / (total - 1);
+      const pt = this.path.getPointAtLength(this.len * at);
+      const rip = document.createElement('div'); rip.className = 'ripple';
+      rip.style.left = pt.x + 'px'; rip.style.top = pt.y + 'px'; fx.appendChild(rip);
+      const nd = document.createElement('div'); nd.className = 'node';
+      nd.style.left = pt.x + 'px'; nd.style.top = pt.y + 'px';
+      nd.innerHTML = '<span class="ring"></span><span class="core"></span>';
+      fx.appendChild(nd);
+      const lb = document.createElement('div'); lb.className = 'nlab';
+      lb.style.left = pt.x + 'px';
+      const labY = pt.y + (i % 2 ? 20 : -34);
+      lb.style.top = Math.max(BAND.top + 4, Math.min(BAND.bot - 28, labY)) + 'px';
+      lb.textContent = showLabels ? nodes[i] : '';
+      lb.style.display = showLabels ? '' : 'none';
+      fx.appendChild(lb);
+      this.nodes.push(nd); this.rips.push(rip); this.labs.push(lb);
+    }
+  },
+  draw(t){
+    const idx = beatIndexAt(t), b = BEATS[idx];
+    const env = envelope(b, t);
+    const t0 = BEATS[0].t0, t1 = BEATS[BEATS.length - 1].t1;
+    const prog = c01((t - t0) / Math.max(.5, t1 - t0));
+    const rp = easeIO(c01(prog / 0.86));
+    this.path.style.strokeDasharray = this.len;
+    this.path.style.strokeDashoffset = (this.len * (1 - rp)).toFixed(2);
+    setCard(b, { maxSize: 56, ratio: 0.24, maxLines: 2, sub: true });
+    place(env.alpha, (1 - env.enter) * 30 + env.exit * -22, 0.66);
+    const n = this.nodes.length;
+    const lit = (idx + 1) / n;
+    this.nodes.forEach((nd, i) => {
+      const local = c01((lit - (i + 1) / n + 1 / n) / (1 / n));
+      const v = spring(local);
+      nd.style.opacity = c01(v * 2.4).toFixed(3);
+      nd.style.transform = 'scale(' + (0.36 + 0.64 * v).toFixed(3) + ')';
+      const r2 = c01(local * 1.4);
+      this.rips[i].style.opacity = (r2 < 1 ? 0.5 * (1 - easeOut(r2)) : 0).toFixed(3);
+      this.rips[i].style.transform = 'scale(' + (1 + 3.2 * easeOut(r2)).toFixed(3) + ')';
+      this.labs[i].style.opacity = this.showLabels ? easeOut(c01(local * 1.3)).toFixed(3) : 0;
+    });
+  }
+};
+
+/* 02 · 冲击大字：大字砸入 + 斜切色块撕开 */
+TPL.impact = {
+  build(){
+    for (let i = 0; i < 3; i++){
+      const s = document.createElement('div'); s.className = 'slab'; fx.appendChild(s); this.slabs = this.slabs || []; this.slabs.push(s);
+    }
+    const bu = document.createElement('div'); bu.className = 'burst'; fx.appendChild(bu); this.burst = bu;
+  },
+  draw(t){
+    const idx = beatIndexAt(t), b = BEATS[idx];
+    const env = envelope(b, t);
+    setCard(b, { maxSize: 88, ratio: 0.34, maxLines: 2, sub: false });
+    place(env.alpha, (1 - env.enter) * 46 + env.exit * -30, 0.30);
+    card.style.transform += ' scale(' + (1 + 0.055 * env.enter * (1 - env.vis)).toFixed(3) + ')';
+    const rnd = seeded(idx + 11);
+    const top = BAND.top + BAND.h * 0.10;
+    const slabH = 15;
+    this.slabs.forEach((s, k) => {
+      const on = easeOut(c01((env.enter - k * 0.10) / 0.5)) * env.vis;
+      s.style.opacity = (0.92 * on).toFixed(3);
+      s.style.height = (14 + rnd() * 9).toFixed(0) + 'px';
+      s.style.top = (top + k * (BAND.h * 0.30)).toFixed(0) + 'px';
+      s.style.transform = 'translateX(' + ((1 - on) * (k % 2 ? 120 : -120)).toFixed(1) + 'px) rotate(' + ((k - 1) * 1.0).toFixed(1) + 'deg)';
+    });
+    const sz = Math.max(260, BAND.h * 1.5);
+    this.burst.style.width = sz + 'px'; this.burst.style.height = sz + 'px';
+    this.burst.style.left = (W / 2 - sz / 2).toFixed(0) + 'px';
+    this.burst.style.top = (BAND.top + BAND.h / 2 - sz / 2).toFixed(0) + 'px';
+    this.burst.style.opacity = (0.30 * env.alpha * (1 - easeOut(env.p))).toFixed(3);
+    this.burst.style.transform = 'scale(' + (0.7 + 0.55 * easeOut(env.p)).toFixed(3) + ') rotate(' + (env.p * 24).toFixed(1) + 'deg)';
+  }
+};
+
+/* 03 · 极简章节：细线划开 + 序号 */
+TPL.editorial = {
+  build(){
+    const r = document.createElement('div'); r.className = 'rule'; fx.appendChild(r); this.rule = r;
+    const ix = document.createElement('div'); ix.className = 'idx'; fx.appendChild(ix); this.idx = ix;
+    this.ticks = [];
+    for (let i = 0; i < Math.min(BEATS.length, 10); i++){
+      const tk = document.createElement('div'); tk.className = 'tick';
+      fx.appendChild(tk); this.ticks.push(tk);
+    }
+  },
+  draw(t){
+    const idx = beatIndexAt(t), b = BEATS[idx];
+    const env = envelope(b, t);
+    setCard(b, { maxSize: 68, ratio: 0.26, maxLines: 2, sub: true });
+    place(env.alpha, (1 - env.enter) * 24 + env.exit * -16, 0.34);
+    elTtl.style.letterSpacing = (0.2 + (1 - env.enter) * 6).toFixed(2) + 'px';
+    elTtl.style.opacity = (0.4 + 0.6 * env.enter).toFixed(3);
+    const rw = easeOut(c01((env.enter - .08) / .5)) * env.vis;
+    this.rule.style.left = '68px';
+    this.rule.style.top = (BAND.top + 2) + 'px';
+    this.rule.style.width = ((W - 136) * rw).toFixed(1) + 'px';
+    this.rule.style.opacity = (0.85 * rw).toFixed(3);
+    const isz = Math.round(Math.max(60, Math.min(140, BAND.h * 0.42)));
+    this.idx.textContent = String(idx + 1).padStart(2, '0');
+    this.idx.style.fontSize = isz + 'px';
+    this.idx.style.top = (BAND.top + BAND.h * 0.06) + 'px';
+    this.idx.style.opacity = (0.45 + 0.45 * env.enter).toFixed(3);
+    const n = Math.min(this.ticks.length, BEATS.length);
+    this.ticks.forEach((tk, i) => {
+      tk.style.top = (BAND.bot - 6 - (n - 1 - i) * 9) + 'px';
+      tk.style.opacity = (i <= idx ? 0.85 : 0.18).toFixed(3);
+      tk.style.background = i <= idx ? 'var(--a)' : 'rgba(245,242,233,.20)';
+      tk.style.width = (i <= idx ? 120 : 60) + 'px';
+    });
+  }
+};
+
+/* 04 · 数据仪表盘：标题左栏 + 右侧大指标 + 底部柱状生长 */
+TPL.dashboard = {
+  build(){
+    const g = document.createElement('div'); g.className = 'grid'; fx.appendChild(g); this.grid = g;
+    const m = document.createElement('div'); m.className = 'metric';
+    m.innerHTML = '<div class="v">0</div><div class="k"></div>';
+    fx.appendChild(m); this.metric = m;
+    const bars = document.createElement('div'); bars.className = 'bars'; fx.appendChild(bars); this.bars = bars;
+    for (let i = 0; i < 7; i++) bars.appendChild(document.createElement('i'));
+    this.barEls = [...bars.children];
+  },
+  draw(t){
+    const idx = beatIndexAt(t), b = BEATS[idx];
+    const env = envelope(b, t);
+    setCard(b, { maxSize: 46, ratio: 0.17, maxLines: 3, sub: false });
+    place(env.alpha, (1 - env.enter) * 24 + env.exit * -16, 0.06);
+    this.grid.style.opacity = (0.5 * easeOut(c01(env.p * 2))).toFixed(3);
+    const barsH = Math.max(46, BAND.h * 0.26);
+    this.bars.style.top = (BAND.bot - barsH).toFixed(0) + 'px';
+    this.bars.style.height = barsH.toFixed(0) + 'px';
+    const rnd = seeded(idx + 5);
+    this.barEls.forEach((el2, i) => {
+      const h = barsH * (0.30 + rnd() * 0.70);
+      const on = spring(c01((env.enter - i * 0.06) / 0.6));
+      el2.style.height = (h * on).toFixed(1) + 'px';
+      el2.style.opacity = (0.9 * env.vis).toFixed(3);
+    });
+    const nums = (b.title || '').match(/\d+(?:\.\d+)?/g) || [];
+    const metric = (CFG.copy && CFG.copy.metric) || {};
+    const hasOwn = nums.length > 0;
+    const target = hasOwn ? parseFloat(nums[0]) : (metric.value != null ? metric.value : BEATS.length);
+    const unit = hasOwn ? (b.tag || '本拍') : (metric.unit || '总计');
+    const on = spring(c01((env.enter - 0.10) / 0.6));
+    const m = this.metric;
+    m.style.top = (BAND.top + BAND.h * 0.12).toFixed(0) + 'px';
+    m.style.opacity = c01(on * 2).toFixed(3);
+    m.style.transform = 'translateY(' + ((1 - on) * 16).toFixed(1) + 'px)';
+    const v = m.querySelector('.v');
+    v.style.fontSize = Math.round(Math.max(30, Math.min(60, BAND.h * 0.22))) + 'px';
+    v.textContent = Number.isInteger(target) ? Math.round(target * c01(on))
+                                             : (target * c01(on)).toFixed(1);
+    m.querySelector('.k').textContent = unit;
+  }
+};
+
+/* 05 · 杂志编辑：刊头 + 衬线标题 + 描边框 */
+TPL.magazine = {
+  build(){
+    this.frames = [];
+    for (let i = 0; i < 2; i++){
+      const f = document.createElement('div'); f.className = 'frame'; fx.appendChild(f); this.frames.push(f);
+    }
+  },
+  draw(t){
+    const idx = beatIndexAt(t), b = BEATS[idx];
+    const env = envelope(b, t);
+    setCard(b, { maxSize: 76, ratio: 0.30, maxLines: 2, sub: true });
+    place(env.alpha, (1 - env.enter) * 20 + env.exit * -14, 0.30);
+    const rw = easeOut(c01((env.enter - .1) / .5)) * env.vis;
+    this.frames.forEach((f, i) => {
+      f.style.opacity = (0.5 * rw).toFixed(3);
+      f.style.left = (68 + i * 9) + 'px';
+      f.style.top = (BAND.top + 4 + i * 9) + 'px';
+      f.style.width = ((W - 136 - i * 18) * rw).toFixed(1) + 'px';
+      f.style.height = (BAND.h * (0.86 - i * 0.10)).toFixed(1) + 'px';
+    });
+  }
+};
+
+/* ── 渲染 ──────────────────────────────────────────────── */
+let T = null;
+function render(t){
+  t = Math.max(0, Math.min(CFG.duration, t));
+  const idx = beatIndexAt(t), b = BEATS[idx];
+  const env = envelope(b, t);
+  const pillOn = spring(c01(t / Math.max(.35, Math.min(1.0, CFG.duration * 0.06))));
+  pill.style.opacity = (CFG.hud.pill === false || !(CFG.brand && CFG.brand.name)) ? 0 : c01(pillOn * 2).toFixed(4);
+  pill.style.transform = 'translateX(-50%) translateY(' + ((1 - pillOn) * -40).toFixed(2) + 'px)';
+  pbar.style.opacity = CFG.hud.progress === false ? 0 : Math.min(1, t / 0.9).toFixed(3);
+  pbarFill.style.width = (c01(t / CFG.duration) * 100).toFixed(2) + '%';
+  pbarPct.textContent = Math.round(c01(t / CFG.duration) * 100) + '%';
+  card.style.transform = '';
+  if (T && T.draw) T.draw(t);
+  return t;
+}
+
+function init(){
+  applySkin();
+  pillTxt.textContent = (CFG.brand && CFG.brand.name ? CFG.brand.name : '')
+    + (CFG.brand && CFG.brand.tagline ? ' · ' + CFG.brand.tagline : '');
+  T = TPL[P.get('style') || CFG.style] || TPL.route;
+  T.build && T.build();
+  render(Number(P.get('t') || 0));
+}
+
+window.TPL = TPL;
+window.render = render;
+window.__layout = () => BAND;
+window.__getCFG = () => CFG;
+init();
+</script>
+</body>
+</html>

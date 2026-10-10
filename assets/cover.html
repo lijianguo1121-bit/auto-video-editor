@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>auto-video-editor · 封面</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:#000;overflow:hidden}
+  #cv{position:relative;overflow:hidden;background:#0B1116}
+  #cv img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:none}
+  #cv.live img{display:block}
+  .veil{position:absolute;inset:0;
+    background:linear-gradient(180deg,rgba(4,8,12,.78) 0,rgba(4,8,12,.18) 30%,rgba(4,8,12,.10) 46%,
+                                      rgba(4,8,12,.72) 74%,rgba(4,8,12,.95) 100%)}
+  .wrap{position:absolute;left:0;right:0;bottom:0;padding:0 7% 8%;
+    font-family:"PingFang SC","Hiragino Sans GB","Heiti SC","Microsoft YaHei",sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .kicker{display:inline-flex;align-items:center;gap:10px;height:44px;padding:0 18px;border-radius:22px;
+    font-size:20px;font-weight:700;letter-spacing:2.4px;margin-bottom:22px;
+    background:rgba(8,14,19,.72);border:1px solid var(--a);color:var(--b)}
+  .kicker i{width:9px;height:9px;border-radius:50%;background:var(--a);font-style:normal}
+  .big{font-weight:900;line-height:1.04;letter-spacing:-1px;color:#fff;
+    text-shadow:0 6px 26px rgba(0,0,0,.75);word-break:break-word}
+  .big b{color:var(--a)}
+  .small{margin-top:18px;font-size:30px;font-weight:700;letter-spacing:1.6px;color:rgba(255,255,255,.82);
+    text-shadow:0 4px 16px rgba(0,0,0,.7);display:flex;align-items:center;gap:14px}
+  .small::before{content:"";width:34px;height:4px;border-radius:2px;background:var(--c)}
+  .brandfoot{position:absolute;right:7%;bottom:3.1%;font-size:20px;font-weight:700;letter-spacing:2.6px;
+    color:rgba(255,255,255,.62)}
+</style>
+</head>
+<body>
+<div id="cv">
+  <img id="photo" alt="">
+  <div class="veil"></div>
+  <div class="brandfoot" id="foot"></div>
+  <div class="wrap">
+    <div class="kicker" id="kicker"><i></i><span id="kickerTxt"></span></div>
+    <div class="big" id="big"></div>
+    <div class="small" id="small"></div>
+  </div>
+</div>
+<script>
+/* 由 cover.py 注入 window.__AVE：
+   { w,h, live(是否用首帧), photo(file url), a,b,c, kicker, big, small, foot,
+     bigMax:(最大行数), vAlignEdge:(底部留白比例) } */
+const C = Object.assign({
+  w:1080, h:1440, live:false, photo:'',
+  a:'#8DE0C2', b:'#F5F2E9', c:'#FF9B79',
+  kicker:'', big:'封面大字', small:'', foot:'', bigMax:3
+}, window.__AVE || {});
+
+const cv = document.getElementById('cv');
+cv.style.width = C.w + 'px'; cv.style.height = C.h + 'px';
+document.documentElement.style.width = C.w + 'px';
+document.body.style.width = C.w + 'px';
+const r = cv.style;
+r.setProperty('--a', C.a); r.setProperty('--b', C.b); r.setProperty('--c', C.c);
+
+document.getElementById('kickerTxt').textContent = C.kicker || '';
+document.getElementById('kicker').style.display = C.kicker ? '' : 'none';
+document.getElementById('small').textContent = C.small || '';
+document.getElementById('small').style.display = C.small ? '' : 'none';
+document.getElementById('foot').textContent = C.foot || '';
+if (C.live && C.photo){
+  const p = document.getElementById('photo');
+  p.src = C.photo; cv.classList.add('live');
+}
+
+/* 大字：先按"语义块"折行，再逐档缩字号直到行数 <= bigMax */
+function tokenize(text){
+  const s = [...(text || '')]; const out = []; let i = 0;
+  const UNIT = /[万亿%倍座个家台条次天年元人份款项步期时小分秒]/;
+  while (i < s.length){
+    const ch = s[i];
+    if (/\s/.test(ch)){ i++; continue; }
+    if (/[0-9]/.test(ch)){ let j = i; while (j < s.length && /[0-9.,]/.test(s[j])) j++;
+      if (j < s.length && UNIT.test(s[j])) j++; out.push(s.slice(i, j).join('')); i = j; continue; }
+    if (/[A-Za-z]/.test(ch)){ let j = i; while (j < s.length && /[A-Za-z0-9]/.test(s[j])) j++;
+      out.push(s.slice(i, j).join('')); i = j; continue; }
+    if (/[，。！？、；：,.!?;:·—\-~～]/.test(ch)){ out.push(ch); i++; continue; }
+    out.push(s.slice(i, i + 2).join('')); i += 2;
+  }
+  return out;
+}
+function fitBig(){
+  const maxW = C.w * 0.86;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;font-weight:900;letter-spacing:-1px';
+  document.body.appendChild(probe);
+  const blocks = tokenize(C.big);
+  const wrap = (size) => {
+    probe.style.fontSize = size + 'px';
+    const rows = []; let cur = '';
+    for (const b of blocks){
+      const test = cur + b;
+      probe.textContent = test;
+      if (probe.getBoundingClientRect().width > maxW && cur){ rows.push(cur); cur = b; }
+      else cur = test;
+    }
+    if (cur) rows.push(cur);
+    return rows;
+  };
+  let size = Math.round(C.h * 0.155), rows = [];
+  for (; size >= 44; size -= 4){
+    rows = wrap(size);
+    if (rows.length <= C.bigMax) break;
+  }
+  if (!rows.length || rows.length > C.bigMax){ size = 44; rows = wrap(size); }
+  probe.remove();
+  big.style.fontSize = size + 'px';
+  big.innerHTML = '';
+  for (const r of rows){ const d = document.createElement('div'); d.textContent = r; big.appendChild(d); }
+}
+fitBig();
+window.__ready = true;
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "job": "示例任务",
+  "style": "route",
+  "style_name": "航线落地",
+  "duration": 28.06,
+  "fps": 30,
+  "brand": { "name": "品牌名", "tagline": "一句话定位", "cta": "评论区留言" },
+  "palette": { "a": "#8DE0C2", "b": "#F5F2E9", "c": "#FF9B79", "bg": "#0B1116", "ink": "#F5F2E9" },
+  "hud": { "pill": true, "progress": true },
+  "face": { "detected": true, "guard_px": [92, 465, 521, 525] },
+  "beats": [
+    { "i": 0, "t0": 0.0,   "t1": 5.7,  "tag": "开场", "title": "标题要短到一眼看完", "sub": "副标题可选" },
+    { "i": 1, "t0": 6.1,   "t1": 11.7, "tag": "拆解", "title": "第二拍讲清一件事",  "sub": "关键词 · 关键词" },
+    { "i": 2, "t0": 11.7,  "t1": 17.4, "tag": "亮点", "title": "第三拍给个亮点",    "sub": "" },
+    { "i": 3, "t0": 18.3,  "t1": 22.7, "tag": "落地", "title": "第四拍说怎么落地",  "sub": "" },
+    { "i": 4, "t0": 22.7,  "t1": 28.1, "tag": "行动", "title": "最后一拍给行动指令", "sub": "资料发你" }
+  ],
+  "copy": {
+    "hook": "封面这一行大字",
+    "metric": { "value": 7, "unit": "天上线" },
+    "cta": "评论区留言"
+  },
+  "route": { "nodes": ["开场", "拆解", "亮点", "落地", "行动"] },
+  "motion": { "enter": 0.28, "out": 0.16, "speed": 1.0 },
+  "bgm": { "on": true, "bpm": 108, "mood": "warm" },
+  "render": { "width": 720, "height": 1280, "fps": 30, "crf": 19, "preset": "medium",
+              "loudness_lufs": -15.0, "audio_bitrate": "192k" }
+}
